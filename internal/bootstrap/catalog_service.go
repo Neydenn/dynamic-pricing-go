@@ -2,11 +2,11 @@ package bootstrap
 
 import (
 	"context"
+	"dynamic-pricing/internal/api/catalog_api"
 	"log/slog"
 	"time"
 
 	"dynamic-pricing/config"
-	"dynamic-pricing/internal/api/catalog_api"
 	"dynamic-pricing/internal/httpserver"
 	"dynamic-pricing/internal/producer"
 	"dynamic-pricing/internal/services/catalog"

@@ -22,6 +22,6 @@ func New(brokers []string, topic string) *Producer {
 func (p *Producer) Close() error { return p.w.Close() }
 
 func (p *Producer) Send(ctx context.Context, key string, value []byte) error {
-	msg := kafka.Message{Key: []byte(key), Value: value, Time: time.Now()}
+	msg := kafka.Message{Key: []byte(key), Value: value, Time: time.Now()} //TODO: убрать key ->
 	return p.w.WriteMessages(ctx, msg)
 }
