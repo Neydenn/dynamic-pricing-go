@@ -1,13 +1,13 @@
 package pricing
 
 import (
-    "context"
-    "encoding/json"
-    "errors"
-    "math"
-    "log/slog"
-    "sync"
-    "time"
+	"context"
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"math"
+	"sync"
+	"time"
 
 	"dynamic-pricing/internal/kafka"
 
@@ -57,37 +57,32 @@ func (e *Engine) HandleCatalogEvent(b []byte) error {
 		Stock:     p.Stock,
 		UpdatedAt: ev.TS,
 	}
-    // snapshot updated
-    // Compute and persist an initial price (zero demand) so that
-    // /prices/{product_id} is available immediately after catalog events.
-    snap := e.products[p.ID]
-    e.mu.Unlock()
-    slog.Info("pricing: catalog snapshot", "product_id", p.ID, "base_price", p.BasePrice, "stock", p.Stock)
 
-    price := computePrice(snap.BasePrice, snap.Stock, 0)
-    stored, err := e.repo.UpsertPrice(context.Background(), p.ID, price)
-    if err == nil {
-        slog.Info("pricing: initial price", "product_id", stored.ProductID, "price", stored.CurrentPrice)
-    }
-    return err
+	snap := e.products[p.ID]
+	e.mu.Unlock()
+	slog.Info("pricing: catalog snapshot", "product_id", p.ID, "base_price", p.BasePrice, "stock", p.Stock)
+
+	price := computePrice(snap.BasePrice, snap.Stock, 0)
+	stored, err := e.repo.UpsertPrice(context.Background(), p.ID, price)
+	if err == nil {
+		slog.Info("pricing: initial price", "product_id", stored.ProductID, "price", stored.CurrentPrice)
+	}
+	return err
 }
 
 var ErrUnknownProduct = errors.New("unknown product")
 
-// ComputeAndPersistCurrentPrice computes price from current snapshot and demand
-// window and persists it to the repository. Returns ErrUnknownProduct if the
-// engine has not yet seen a catalog snapshot for this product.
 func (e *Engine) ComputeAndPersistCurrentPrice(ctx context.Context, productID uuid.UUID) (Price, error) {
-    e.mu.RLock()
-    snap, ok := e.products[productID]
-    ts := e.demandTS[productID]
-    e.mu.RUnlock()
-    if !ok {
-        return Price{}, ErrUnknownProduct
-    }
-    demand := len(ts)
-    price := computePrice(snap.BasePrice, snap.Stock, demand)
-    return e.repo.UpsertPrice(ctx, productID, price)
+	e.mu.RLock()
+	snap, ok := e.products[productID]
+	ts := e.demandTS[productID]
+	e.mu.RUnlock()
+	if !ok {
+		return Price{}, ErrUnknownProduct
+	}
+	demand := len(ts)
+	price := computePrice(snap.BasePrice, snap.Stock, demand)
+	return e.repo.UpsertPrice(ctx, productID, price)
 }
 
 func (e *Engine) HandleOrderEvent(ctx context.Context, b []byte) (*Price, error) {
@@ -133,17 +128,17 @@ func (e *Engine) HandleOrderEvent(ctx context.Context, b []byte) (*Price, error)
 	snap, ok := e.products[o.ProductID]
 	e.mu.Unlock()
 
-    if !ok {
-        slog.Warn("pricing: order for unknown product (no snapshot)", "product_id", o.ProductID)
-        return nil, nil
-    }
+	if !ok {
+		slog.Warn("pricing: order for unknown product (no snapshot)", "product_id", o.ProductID)
+		return nil, nil
+	}
 
 	demand := len(ts)
 	price := computePrice(snap.BasePrice, snap.Stock, demand)
-    stored, err := e.repo.UpsertPrice(ctx, o.ProductID, price)
-    if err != nil {
-        return nil, err
-    }
+	stored, err := e.repo.UpsertPrice(ctx, o.ProductID, price)
+	if err != nil {
+		return nil, err
+	}
 	msg, err := NewPriceEvent(stored)
 	if err != nil {
 		return nil, err
