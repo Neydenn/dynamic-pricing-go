@@ -12,20 +12,18 @@ type Consumer struct {
 }
 
 func NewConsumer(brokers []string, topic string, groupID string) *Consumer {
-    return &Consumer{
-        r: kafka.NewReader(kafka.ReaderConfig{
-            Brokers:        brokers,
-            Topic:          topic,
-            GroupID:        groupID,
-            // For new consumer groups, start from the earliest available offset
-            // so that the pricing engine can bootstrap from historical events.
-            StartOffset:    kafka.FirstOffset,
-            MinBytes:       1,
-            MaxBytes:       10e6,
-            MaxWait:        500 * time.Millisecond,
-            CommitInterval: time.Second,
-        }),
-    }
+	return &Consumer{
+		r: kafka.NewReader(kafka.ReaderConfig{
+			Brokers:        brokers,
+			Topic:          topic,
+			GroupID:        groupID,
+			StartOffset:    kafka.FirstOffset,
+			MinBytes:       1,
+			MaxBytes:       10e6,
+			MaxWait:        500 * time.Millisecond,
+			CommitInterval: time.Second,
+		}),
+	}
 }
 
 func (c *Consumer) Close() error {
