@@ -89,6 +89,15 @@ services:
     ports:
       - "8083:8083"
 
+  swagger:
+    image: swaggerapi/swagger-ui
+    ports:
+      - "8089:8080"
+    environment:
+      SWAGGER_JSON: /spec/openapi.yaml
+    volumes:
+      - ./api/openapi.yaml:/spec/openapi.yaml:ro
+
 volumes:
   catalog_db_data:
   users_db_data:

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"dynamic-pricing/config"
-	"dynamic-pricing/internal/httpserver"
+    "dynamic-pricing/internal/httpserver"
 	"dynamic-pricing/internal/kafka"
 	"dynamic-pricing/internal/postgres"
 	"dynamic-pricing/internal/pricing"
@@ -53,9 +53,13 @@ func main() {
 		for {
 			msg, err := catalogCons.Read(ctx)
 			if err != nil {
-				return
+				slog.Error("catalog-cons", "err", err)
+				// retry on transient errors
+				continue
 			}
-			_ = engine.HandleCatalogEvent(msg.Value)
+			if err := engine.HandleCatalogEvent(msg.Value); err != nil {
+				slog.Error("catalog-ev", "err", err)
+			}
 		}
 	}()
 
@@ -63,14 +67,18 @@ func main() {
 		for {
 			msg, err := ordersCons.Read(ctx)
 			if err != nil {
-				return
+				slog.Error("orders-cons", "err", err)
+				// retry on transient errors
+				continue
 			}
-			_, _ = engine.HandleOrderEvent(ctx, msg.Value)
+			if _, err := engine.HandleOrderEvent(ctx, msg.Value); err != nil {
+				slog.Error("orders-ev", "err", err)
+			}
 		}
 	}()
 
-	h := pricing.NewHandler(repo)
-	srv := httpserver.New(cfg.Pricing.HTTPAddr, h.Routes())
+    h := pricing.NewHandler(repo, engine)
+    srv := httpserver.New(cfg.Pricing.HTTPAddr, httpserver.CORS(h.Routes()))
 
 	go func() {
 		if err := srv.Start(); err != nil {

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"dynamic-pricing/config"
-	"dynamic-pricing/internal/httpserver"
+    "dynamic-pricing/internal/httpserver"
 	"dynamic-pricing/internal/kafka"
 	"dynamic-pricing/internal/order"
 	"dynamic-pricing/internal/postgres"
@@ -44,7 +44,7 @@ func main() {
 	svc := order.NewService(repo, prod)
 	h := order.NewHandler(svc)
 
-	srv := httpserver.New(cfg.Order.HTTPAddr, h.Routes())
+    srv := httpserver.New(cfg.Order.HTTPAddr, httpserver.CORS(h.Routes()))
 
 	go func() {
 		if err := srv.Start(); err != nil {
