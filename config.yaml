@@ -1,0 +1,41 @@
+catalog:
+  http_addr: ":8081"
+  db:
+    host: "catalog-db"
+    port: 5432
+    user: "catalog"
+    password: "catalog"
+    name: "catalog"
+    sslmode: "disable"
+  kafka:
+    brokers: ["kafka:9092"]
+    topic: "catalog.events"
+
+order:
+  http_addr: ":8082"
+  db:
+    host: "users-db"
+    port: 5432
+    user: "users"
+    password: "users"
+    name: "users"
+    sslmode: "disable"
+  kafka:
+    brokers: ["kafka:9092"]
+    topic: "orders.events"
+
+pricing:
+  http_addr: ":8083"
+  db:
+    host: "pricing-db"
+    port: 5432
+    user: "pricing"
+    password: "pricing"
+    name: "pricing"
+    sslmode: "disable"
+  kafka:
+    brokers: ["kafka:9092"]
+    orders_topic: "orders.events"
+    catalog_topic: "catalog.events"
+    pricing_topic: "pricing.events"
+    group_id: "pricing-engine"

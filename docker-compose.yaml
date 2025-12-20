@@ -1,0 +1,95 @@
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.7.1
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.7.1
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+  catalog-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: catalog
+      POSTGRES_PASSWORD: catalog
+      POSTGRES_DB: catalog
+    ports:
+      - "5433:5432"
+    volumes:
+      - catalog_db_data:/var/lib/postgresql/data
+      - ./scripts/postgres/catalog_init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+
+  users-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: users
+      POSTGRES_PASSWORD: users
+      POSTGRES_DB: users
+    ports:
+      - "5434:5432"
+    volumes:
+      - users_db_data:/var/lib/postgresql/data
+      - ./scripts/postgres/users_init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+
+  pricing-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: pricing
+      POSTGRES_PASSWORD: pricing
+      POSTGRES_DB: pricing
+    ports:
+      - "5435:5432"
+    volumes:
+      - pricing_db_data:/var/lib/postgresql/data
+      - ./scripts/postgres/pricing_init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+
+  catalog-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.catalog
+    depends_on:
+      - kafka
+      - catalog-db
+    ports:
+      - "8081:8081"
+
+  order-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.order
+    depends_on:
+      - kafka
+      - users-db
+    ports:
+      - "8082:8082"
+
+  pricing-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile.pricing
+    depends_on:
+      - kafka
+      - pricing-db
+    ports:
+      - "8083:8083"
+
+volumes:
+  catalog_db_data:
+  users_db_data:
+  pricing_db_data:

@@ -1,0 +1,28 @@
+openapi: 3.0.3
+info:
+  title: Dynamic Pricing (educational)
+  version: 0.1.0
+paths:
+  /products:
+    post:
+      summary: Create product
+  /products/{id}:
+    get:
+      summary: Get product
+    put:
+      summary: Update product
+  /products/{id}/stock:
+    patch:
+      summary: Update stock
+  /users:
+    post:
+      summary: Create user
+  /orders:
+    post:
+      summary: Place order
+  /orders/{id}/cancel:
+    post:
+      summary: Cancel order
+  /prices/{product_id}:
+    get:
+      summary: Get current price
