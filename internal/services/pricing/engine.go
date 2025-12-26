@@ -9,25 +9,33 @@ import (
 	"sync"
 	"time"
 
-	"dynamic-pricing/internal/kafka"
+	"dynamic-pricing/internal/models"
+	"dynamic-pricing/internal/services"
 
 	"github.com/google/uuid"
 )
 
+type PriceRepository interface {
+	UpsertPrice(ctx context.Context, productID uuid.UUID, currentPrice float64) (models.Price, error)
+	GetPrice(ctx context.Context, productID uuid.UUID) (models.Price, error)
+}
+
+var ErrUnknownProduct = errors.New("unknown product")
+
 type Engine struct {
-	repo     *Repository
-	prod     *kafka.Producer
+	repo     PriceRepository
+	bus      services.EventBus
 	mu       sync.RWMutex
-	products map[uuid.UUID]ProductSnapshot
+	products map[uuid.UUID]models.ProductSnapshot
 	demandTS map[uuid.UUID][]time.Time
 	window   time.Duration
 }
 
-func NewEngine(repo *Repository, prod *kafka.Producer) *Engine {
+func NewEngine(repo PriceRepository, bus services.EventBus) *Engine {
 	return &Engine{
 		repo:     repo,
-		prod:     prod,
-		products: make(map[uuid.UUID]ProductSnapshot),
+		bus:      bus,
+		products: make(map[uuid.UUID]models.ProductSnapshot),
 		demandTS: make(map[uuid.UUID][]time.Time),
 		window:   2 * time.Minute,
 	}
@@ -51,13 +59,12 @@ func (e *Engine) HandleCatalogEvent(b []byte) error {
 		return err
 	}
 	e.mu.Lock()
-	e.products[p.ID] = ProductSnapshot{
+	e.products[p.ID] = models.ProductSnapshot{
 		ID:        p.ID,
 		BasePrice: p.BasePrice,
 		Stock:     p.Stock,
 		UpdatedAt: ev.TS,
 	}
-
 	snap := e.products[p.ID]
 	e.mu.Unlock()
 	slog.Info("pricing: catalog snapshot", "product_id", p.ID, "base_price", p.BasePrice, "stock", p.Stock)
@@ -70,22 +77,7 @@ func (e *Engine) HandleCatalogEvent(b []byte) error {
 	return err
 }
 
-var ErrUnknownProduct = errors.New("unknown product")
-
-func (e *Engine) ComputeAndPersistCurrentPrice(ctx context.Context, productID uuid.UUID) (Price, error) {
-	e.mu.RLock()
-	snap, ok := e.products[productID]
-	ts := e.demandTS[productID]
-	e.mu.RUnlock()
-	if !ok {
-		return Price{}, ErrUnknownProduct
-	}
-	demand := len(ts)
-	price := computePrice(snap.BasePrice, snap.Stock, demand)
-	return e.repo.UpsertPrice(ctx, productID, price)
-}
-
-func (e *Engine) HandleOrderEvent(ctx context.Context, b []byte) (*Price, error) {
+func (e *Engine) HandleOrderEvent(ctx context.Context, b []byte) (*models.Price, error) {
 	var ev struct {
 		Type    string          `json:"type"`
 		TS      time.Time       `json:"ts"`
@@ -94,46 +86,36 @@ func (e *Engine) HandleOrderEvent(ctx context.Context, b []byte) (*Price, error)
 	if err := json.Unmarshal(b, &ev); err != nil {
 		return nil, err
 	}
-	if ev.Type != "order_placed" && ev.Type != "order_canceled" {
-		return nil, nil
-	}
 	var o struct {
 		ProductID uuid.UUID `json:"product_id"`
 		Qty       int       `json:"qty"`
-		Status    string    `json:"status"`
 	}
 	if err := json.Unmarshal(ev.Payload, &o); err != nil {
 		return nil, err
 	}
 
-	now := time.Now().UTC()
-
 	e.mu.Lock()
-	if ev.Type == "order_placed" {
-		for i := 0; i < max(1, o.Qty); i++ {
-			e.demandTS[o.ProductID] = append(e.demandTS[o.ProductID], now)
-		}
+	snap, ok := e.products[o.ProductID]
+	if !ok {
+		e.mu.Unlock()
+		slog.Warn("pricing: order for unknown product (no snapshot)", "product_id", o.ProductID)
+		return nil, ErrUnknownProduct
 	}
 	ts := e.demandTS[o.ProductID]
-	cut := now.Add(-e.window)
-	j := 0
+	cutoff := time.Now().UTC().Add(-e.window)
+	var kept []time.Time
 	for _, t := range ts {
-		if t.After(cut) {
-			ts[j] = t
-			j++
+		if t.After(cutoff) {
+			kept = append(kept, t)
 		}
 	}
-	ts = ts[:j]
-	e.demandTS[o.ProductID] = ts
-	snap, ok := e.products[o.ProductID]
+	for i := 0; i < max(1, o.Qty); i++ {
+		kept = append(kept, time.Now().UTC())
+	}
+	e.demandTS[o.ProductID] = kept
 	e.mu.Unlock()
 
-	if !ok {
-		slog.Warn("pricing: order for unknown product (no snapshot)", "product_id", o.ProductID)
-		return nil, nil
-	}
-
-	demand := len(ts)
+	demand := len(kept)
 	price := computePrice(snap.BasePrice, snap.Stock, demand)
 	stored, err := e.repo.UpsertPrice(ctx, o.ProductID, price)
 	if err != nil {
@@ -143,7 +125,24 @@ func (e *Engine) HandleOrderEvent(ctx context.Context, b []byte) (*Price, error)
 	if err != nil {
 		return nil, err
 	}
-	if err := e.prod.Send(ctx, o.ProductID.String(), msg); err != nil {
+	if err := e.bus.Send(ctx, o.ProductID.String(), msg); err != nil {
+		return nil, err
+	}
+	return &stored, nil
+}
+
+func (e *Engine) ComputeAndPersistCurrentPrice(ctx context.Context, productID uuid.UUID) (*models.Price, error) {
+	e.mu.RLock()
+	snap, ok := e.products[productID]
+	ts := e.demandTS[productID]
+	e.mu.RUnlock()
+	if !ok {
+		return nil, ErrUnknownProduct
+	}
+	demand := len(ts)
+	price := computePrice(snap.BasePrice, snap.Stock, demand)
+	stored, err := e.repo.UpsertPrice(ctx, productID, price)
+	if err != nil {
 		return nil, err
 	}
 	return &stored, nil
