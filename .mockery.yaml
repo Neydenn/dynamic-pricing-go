@@ -1,0 +1,11 @@
+version: 2
+with-expecter: true
+
+packages:
+  dynamic-pricing/internal/services:
+    config:
+      outpkg: mocks
+      output: internal/services/mocks
+      filename: "{{.InterfaceName}}_mock_test.go"
+    interfaces:
+      EventBus: {}

@@ -10,6 +10,7 @@ import (
     "dynamic-pricing/internal/httpserver"
     "dynamic-pricing/internal/consumer"
     "dynamic-pricing/internal/producer"
+    "dynamic-pricing/internal/kafkautil"
     pricing "dynamic-pricing/internal/services/pricing"
     "dynamic-pricing/internal/storage/pg"
 )
@@ -19,6 +20,11 @@ func RunPricing(ctx context.Context, cfg config.Root) error {
     db, err := pg.NewPool(ctx, cfg.Pricing.DB)
     if err != nil { return err }
     defer db.Close()
+
+    // Ensure the pricing topic exists to avoid UnknownTopic errors on publish.
+    if err := kafkautil.EnsureTopic(ctx, cfg.Pricing.Kafka.Brokers, cfg.Pricing.Kafka.PricingTopic, 1, 1); err != nil {
+        slog.Error("kafka ensure topic", "topic", cfg.Pricing.Kafka.PricingTopic, "err", err)
+    }
 
     bus := producer.New(cfg.Pricing.Kafka.Brokers, cfg.Pricing.Kafka.PricingTopic)
     defer bus.Close()
