@@ -23,3 +23,8 @@
  - Создать товар: `POST http://localhost:8081/products` тело `{ "name":"A", "base_price":10, "stock":5 }`
  - Создать пользователя: `POST http://localhost:8082/users` тело `{ "email":"a@ex.com" }`
  - Получить цену: `GET http://localhost:8083/prices/{product_id}`
+
+ - docker-compose exec redis redis-cli GET app:version
+ - docker-compose exec redis redis-cli HGETALL product:42
+ - docker-compose exec redis redis-cli LRANGE queue:pricing 0 -1
+ - docker compose exec users-db psql -U users -d users

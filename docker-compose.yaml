@@ -110,7 +110,28 @@ services:
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
       KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
 
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  redis-init:
+    image: redis:7-alpine
+    depends_on:
+      - redis
+    entrypoint:
+      [
+        "sh",
+        "-c",
+        "until redis-cli -h redis ping >/dev/null 2>&1; do echo waiting for redis; sleep 1; done; redis-cli -h redis SET app:version 1.0.0; redis-cli -h redis HSET product:42 id 42 name 'Widget' price 19.99; redis-cli -h redis LPUSH queue:pricing job:1 job:2; echo Seeded"
+      ]
+    restart: "no"
+
 volumes:
   catalog_db_data:
   users_db_data:
   pricing_db_data:
+  redis_data:
